@@ -1,0 +1,242 @@
+from pathlib import Path
+import shutil
+import re
+import json
+
+
+# =============================================================================
+# GERENCIADOR DE CONFIGURAÇÃO
+# =============================================================================
+
+class Configuracao:
+    """
+    Docstring: texto descritivo da classe. Aparece quando você chama help(Configuracao).
+    Essa classe tem UMA responsabilidade: lidar com arquivos de configuração.
+    """
+
+    # Atributos de CLASSE: pertencem à classe, não à instância.
+    # São compartilhados por todos os objetos criados a partir dela.
+    # Usamos para constantes que não mudam entre instâncias.
+    PADRAO_NOME    = r'^[a-zA-Z0-9_.-]+$'
+    TAMANHO_MAXIMO = 15 * 1024 * 1024  # 15MB
+
+    def __init__(self, config_path: Path):
+        """
+        __init__ é o CONSTRUTOR: executado automaticamente quando você cria
+        um objeto com Configuracao(algum_path).
+
+        'self' é uma referência ao próprio objeto sendo criado.
+        Tudo que começa com self. é um ATRIBUTO DE INSTÂNCIA:
+        cada objeto tem o seu próprio valor independente.
+        """
+        self.config_path = config_path          # guarda o path recebido
+        self.paths_json  = config_path / "paths.json"  # monta o caminho do json
+        self.mods_json   = config_path / "mods.json"
+        self._paths      = self._carregar_paths()
+        #                  ^
+        # O _ no início é uma CONVENÇÃO: indica que é "privado",
+        # ou seja, não deve ser acessado diretamente de fora da classe.
+        # Python não impede o acesso, mas o _ avisa: "não mexa nisso".
+
+    def _carregar_paths(self) -> dict:
+        """
+        Método 'privado' (convenção do _): chamado apenas dentro da própria classe.
+        Aqui ele é chamado no __init__ para popular self._paths.
+        Retorna um dicionário com os caminhos lidos do JSON.
+        """
+        if not self.paths_json.exists():
+            # Se o arquivo não existe, cria com valores padrão
+            padrao = {
+                "game": "..\\files\\game",
+                "mods": "..\\files\\mods"
+            }
+            with open(self.paths_json, 'w', encoding='utf-8') as j:
+                json.dump(padrao, j, indent=4, ensure_ascii=False)
+
+        with open(self.paths_json, 'r', encoding='utf-8') as j:
+            return json.load(j)  # retorna o dict para quem chamou
+
+    @property
+    def game_path(self) -> Path:
+        """
+        @property: esse método se comporta como atributo (sem parênteses).
+        Toda vez que alguém acessa cfg.game_path, esse código roda
+        e converte a string do JSON em um objeto Path.
+        Quem usa a classe não precisa saber como isso funciona por dentro.
+        """
+        return Path(self._paths['game'])
+
+    @property
+    def mods_path(self) -> Path:
+        return Path(self._paths['mods'])
+
+
+# =============================================================================
+# GERENCIADOR DE BIGFILE
+# =============================================================================
+
+class GerenciadorBigfile:
+    """
+    Responsabilidade única: tudo que envolve o bigfile.
+    Backup, restauração e redirecionamento via symlink.
+    Não sabe nada sobre mods ou configuração — só sobre o bigfile.
+    """
+
+    def __init__(self, game_path: Path):
+        """
+        Recebe o caminho da pasta do jogo e monta os paths internos.
+        Nenhum código externo precisa saber como esses arquivos se chamam.
+        """
+        self.bigfile          = game_path / "bigfile"
+        self.bigfile_bkp      = game_path / "bigfile_bkp"
+        self.bigfile_original = Path(f"{self.bigfile}_original")
+
+    @property
+    def ambiente_pronto(self) -> bool:
+        """
+        Property que encapsula uma verificação composta.
+        Em vez de repetir essas três condições em vários lugares,
+        você centraliza aqui e usa: if bigfile.ambiente_pronto
+        Retorna True somente se tudo estiver no lugar certo.
+        """
+        return (
+            self.bigfile.is_symlink() and      # bigfile deve ser um symlink
+            self.bigfile_bkp.is_file() and     # backup deve existir
+            self.bigfile_original.is_file()    # arquivo original deve existir
+        )
+
+    def preparar(self) -> None:
+        """
+        -> None significa que esse método não retorna nenhum valor.
+        Lógica de primeira execução vs execuções seguintes centralizada aqui.
+        """
+        if self.bigfile.exists() and self.bigfile.is_file():
+            # Arquivo ainda não foi processado: primeira execução
+            print("Primeira execução — criando backup...")
+            try:
+                shutil.copy2(self.bigfile, self.bigfile_bkp)       # cria backup
+                shutil.move(self.bigfile, self.bigfile_original)    # renomeia original
+                self.bigfile.symlink_to(self.bigfile_original)      # cria symlink
+                print("Ambiente preparado.")
+            except Exception as e:
+                # Captura qualquer erro e mostra a mensagem sem travar o programa
+                print(f"Erro ao preparar ambiente: {e}")
+
+        elif self.ambiente_pronto:
+            # Já foi configurado antes, tudo certo
+            print("Ambiente já configurado.")
+
+        else:
+            # Nenhuma das condições bateu: algo está errado
+            print("Erro: bigfile não encontrado ou corrompido.")
+
+    def restaurar(self) -> None:
+        """Remove tudo que foi criado e restaura o bigfile do backup."""
+        if self.bigfile_bkp.is_file():
+            self.bigfile.unlink(missing_ok=True)           # remove symlink
+            self.bigfile_original.unlink(missing_ok=True)  # remove _original
+            shutil.copy2(self.bigfile_bkp, self.bigfile)   # restaura do backup
+            print("Restauração concluída.")
+        else:
+            print("Erro: backup não encontrado.")
+
+    def apontar_para(self, caminho_mod: str) -> None:
+        """
+        Redireciona o symlink para o mod escolhido.
+        Recebe o caminho como string — quem chama decide qual mod usar.
+        Essa classe só faz o redirecionamento, não escolhe o mod.
+        """
+        if not self.bigfile.is_symlink():
+            print("Erro: estrutura danificada.")
+            return  # interrompe o método sem retornar valor (early return)
+
+        self.bigfile.unlink(missing_ok=True)      # remove symlink atual
+        self.bigfile.symlink_to(caminho_mod)       # cria novo symlink
+        print(f"Mod ativado: {caminho_mod}")
+
+
+# =============================================================================
+# GERENCIADOR DE MODS
+# =============================================================================
+
+class GerenciadorMods:
+    """
+    Responsabilidade única: tudo que envolve os arquivos de mod.
+    Listar, validar e salvar. Não sabe nada sobre bigfile ou symlinks.
+    """
+
+    PADRAO_NOME    = r'^[a-zA-Z0-9_.-]+$'
+    TAMANHO_MAXIMO = 15 * 1024 * 1024
+
+    def __init__(self, mods_path: Path, mods_json: Path):
+        self.mods_path = mods_path
+        self.mods_json = mods_json
+
+    def listar(self) -> list:
+        """
+        Retorna lista de dicionários com os mods encontrados na pasta.
+        List comprehension: forma compacta de construir uma lista com uma regra.
+        Equivale a um for que filtra apenas arquivos (não pastas).
+        """
+        return [
+            {"nome": f.name, "caminho": str(f)}
+            for f in self.mods_path.iterdir()  # itera tudo na pasta
+            if f.is_file()                     # filtra só arquivos
+        ]
+
+    def validar(self, arquivo: str) -> bool:
+        """
+        Valida um arquivo de mod antes de usá-lo.
+        Retorna False em qualquer problema, True só se passar em tudo.
+        Cada verificação tem um motivo claro de segurança.
+        """
+        path = Path(arquivo)
+
+        if not path.exists() or not path.is_file():
+            return False  # arquivo não existe
+
+        if not re.match(self.PADRAO_NOME, path.name):
+            return False  # nome com caracteres inválidos (ex: "../outro")
+
+        tamanho = path.stat().st_size
+        if tamanho == 0 or tamanho > self.TAMANHO_MAXIMO:
+            return False  # arquivo vazio ou grande demais
+
+        return True
+
+    def salvar(self, lista_mods: list) -> None:
+        """Persiste a lista de mods no arquivo JSON de configuração."""
+        with open(self.mods_json, 'w', encoding='utf-8') as arq:
+            json.dump(lista_mods, arq, indent=4, ensure_ascii=False)
+        print(f"Mods salvos em: {self.mods_json}")
+
+
+# =============================================================================
+# PONTO DE ENTRADA
+# =============================================================================
+
+if __name__ == "__main__":
+    """
+    Esse bloco só roda quando você executa esse arquivo diretamente.
+    Se outro arquivo importar esse módulo, esse bloco é ignorado.
+    Aqui apenas ORQUESTRAMOS os objetos — nenhuma lógica nova.
+    """
+
+    # Instanciando os objetos: cada um cuida do seu domínio
+    cfg     = Configuracao(Path("..\\cfg"))
+    bigfile = GerenciadorBigfile(cfg.game_path)
+    mods    = GerenciadorMods(cfg.mods_path, cfg.mods_json)
+
+    # A GUI raylib vai chamar esses métodos nos eventos de botão, por exemplo:
+    # botao_preparar  -> bigfile.preparar()
+    # botao_restaurar -> bigfile.restaurar()
+    # botao_ativar    -> bigfile.apontar_para(mod_selecionado)
+
+    bigfile.preparar()
+
+    lista = mods.listar()
+    mods.salvar(lista)
+
+    for mod in lista:
+        if mods.validar(mod['caminho']):
+            bigfile.apontar_para(mod['caminho'])

@@ -1,0 +1,261 @@
+import pyray as rl
+import subprocess
+import json
+from pathlib import Path
+from src import (
+    restauracao_completa,
+    listar_mods,
+    iniciar_mod,
+    bigfile,
+    bigfile_bkp,
+    bigfile_original,
+    mods_path,
+    mods_json,
+)
+
+# =============================================================================
+# CONFIGURAÇÕES DA JANELA
+# =============================================================================
+
+LARGURA = 500
+ALTURA  = 650
+TITULO  = "Mod Launcher"
+
+STEAM_APP_ID = "985890"  # <- substitua pelo ID do jogo na Steam
+
+# =============================================================================
+# PALETA — Dark Blue
+# =============================================================================
+
+FUNDO         = rl.Color(10,  14,  26,  255)  # fundo principal
+# PAINEL        = rl.Color(18,  24,  42,  255)  # painel/card
+ITEM_NORMAL   = rl.Color(24,  34,  60,  255)  # item da lista
+ITEM_HOVER    = rl.Color(34,  48,  84,  255)  # item com mouse em cima
+ITEM_ATIVO    = rl.Color(30,  80,  180, 255)  # item selecionado
+BARRA_ATIVA   = rl.Color(80,  160, 255, 255)  # barra lateral do item ativo
+BTN_RESTAURAR = rl.Color(140, 30,  50,  255)  # vermelho escuro
+BTN_CONFIG    = rl.Color(28,  42,  80,  255)  # azul escuro
+BTN_SAIR      = rl.Color(18,  24,  42,  255)  # quase fundo
+SEPARADOR     = rl.Color(30,  46,  80,  255)  # linha divisória
+TEXTO         = rl.Color(210, 220, 240, 255)  # texto principal
+TEXTO_FRACO   = rl.Color(90,  110, 160, 255)  # texto secundário
+TITULO_COR    = rl.Color(100, 160, 255, 255)  # destaque azul claro
+
+# =============================================================================
+# ESTADO DA APLICAÇÃO
+# =============================================================================
+
+estado = {
+    "mods":    [],   # lista de dicts: {nome, caminho, label}
+    "ativo":   None, # caminho do item atualmente ativo
+}
+
+# =============================================================================
+# GERENCIAMENTO DE LABELS (mods.json)
+# =============================================================================
+
+def carregar_labels(lista_mods: list) -> list:
+    if not mods_json.exists():
+        return []
+
+    with open(mods_json, 'r', encoding='utf-8') as f:
+        dados = json.load(f)
+
+    # Normaliza as chaves para evitar divergência / vs \
+    cfg = {str(Path(item["caminho"])): item for item in dados}
+
+    resultado = []
+    for mod in lista_mods:
+        chave = str(Path(mod["caminho"]))  # normaliza também o caminho do mod
+        salvo = cfg.get(chave, {})
+        if salvo.get("ativo", False):
+            mod["label"] = salvo.get("label") or mod["nome"]
+            resultado.append(mod)
+
+    return resultado
+
+
+def salvar_labels(lista_mods: list) -> None:
+    """Persiste os labels customizados no mods.json."""
+    with open(mods_json, 'w', encoding='utf-8') as f:
+        json.dump(lista_mods, f, indent=4, ensure_ascii=False)
+
+
+# =============================================================================
+# AÇÕES
+# =============================================================================
+
+def lancar_jogo() -> None:
+    """Abre o jogo via Steam e fecha a GUI."""
+    steam_url = f"steam://rungameid/{STEAM_APP_ID}"
+    subprocess.Popen(["cmd", "/c", "start", steam_url])
+    rl.close_window()
+    raise SystemExit
+
+
+
+
+def ativar_e_lancar(caminho: str) -> None:
+    """Aponta o symlink para o mod escolhido e lança o jogo."""
+    iniciar_mod(bigfile, caminho)
+    estado["ativo"] = caminho
+    lancar_jogo()
+
+
+# =============================================================================
+# HELPERS VISUAIS
+# =============================================================================
+
+def cor_item(caminho: str, hover: bool) -> rl.Color:
+    if estado["ativo"] == caminho:
+        return ITEM_ATIVO
+    return ITEM_HOVER if hover else ITEM_NORMAL
+
+
+def clarear(cor: rl.Color, quantidade: int = 25) -> rl.Color:
+    return rl.Color(
+        min(cor.r + quantidade, 255),
+        min(cor.g + quantidade, 255),
+        min(cor.b + quantidade, 255),
+        255,
+    )
+
+
+# =============================================================================
+# COMPONENTES DE UI
+# =============================================================================
+
+def desenhar_item(label: str, caminho: str, x: int, y: int, larg: int, alt: int) -> bool:
+    """
+    Desenha um item clicável da lista de mods.
+    Retorna True se foi clicado.
+    """
+    rect  = rl.Rectangle(x, y, larg, alt)
+    mouse = rl.get_mouse_position()
+    hover = rl.check_collision_point_rec(mouse, rect)
+
+    rl.draw_rectangle_rec(rect, cor_item(caminho, hover))
+
+    # Barra lateral quando ativo
+    if estado["ativo"] == caminho:
+        rl.draw_rectangle(x, y, 4, alt, BARRA_ATIVA)
+
+    rl.draw_text(label, x + 18, y + (alt // 2) - 9, 18, TEXTO)
+
+    return hover and rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT)
+
+
+def desenhar_botao(label: str, x: int, y: int, larg: int, alt: int, cor: rl.Color) -> bool:
+    """
+    Desenha um botão de ação.
+    Retorna True se foi clicado.
+    """
+    rect  = rl.Rectangle(x, y, larg, alt)
+    mouse = rl.get_mouse_position()
+    hover = rl.check_collision_point_rec(mouse, rect)
+
+    rl.draw_rectangle_rec(rect, clarear(cor) if hover else cor)
+    rl.draw_text(label, x + 18, y + (alt // 2) - 9, 18, TEXTO)
+
+    return hover and rl.is_mouse_button_pressed(rl.MouseButton.MOUSE_BUTTON_LEFT)
+
+
+def desenhar_separador(y: int) -> None:
+    rl.draw_rectangle(20, y, LARGURA - 40, 1, SEPARADOR)
+
+
+def desenhar_titulo() -> None:
+    rl.draw_text("MOD LAUNCHER", 20, 22, 22, TITULO_COR)
+    rl.draw_text("selecione um mod e jogue", 22, 50, 14, TEXTO_FRACO)
+
+
+# =============================================================================
+# LOOP PRINCIPAL
+# =============================================================================
+
+def main() -> None:
+    rl.init_window(LARGURA, ALTURA, TITULO)
+    rl.set_target_fps(60)
+
+    mods_brutos = listar_mods(mods_path)
+    estado["mods"] = carregar_labels(mods_brutos)[:5]
+
+    # Layout
+    MARGEM     = 20
+    ITEM_ALT   = 54
+    ITEM_LARG  = LARGURA - MARGEM * 2
+    BTN_ALT    = 46
+    y          = 80   # início da lista
+
+    while not rl.window_should_close():
+        rl.begin_drawing()
+        rl.clear_background(FUNDO)
+
+        desenhar_titulo()
+
+        y = 80
+
+        # -----------------------------------------------------------------
+        # Opção Original
+        # -----------------------------------------------------------------
+        caminho_original = str(bigfile_original)
+
+        if desenhar_item("Original", caminho_original, MARGEM, y, ITEM_LARG, ITEM_ALT):
+            ativar_e_lancar(caminho_original)
+
+        y += ITEM_ALT + 6
+
+        # -----------------------------------------------------------------
+        # Mods da pasta
+        # -----------------------------------------------------------------
+        if estado["mods"]:
+            desenhar_separador(y)
+            y += 12
+
+            for mod in estado["mods"]:
+                if desenhar_item(mod["label"], mod["caminho"], MARGEM, y, ITEM_LARG, ITEM_ALT):
+                    ativar_e_lancar(mod["caminho"])
+                y += ITEM_ALT + 6
+
+        # -----------------------------------------------------------------
+        # Botões fixos
+        # -----------------------------------------------------------------
+        y += 6
+        desenhar_separador(y)
+        y += 14
+
+        if desenhar_botao("Restaurar original", MARGEM, y, ITEM_LARG, BTN_ALT, BTN_RESTAURAR):
+            restauracao_completa(bigfile, bigfile_bkp)
+            # Apaga o mods.json
+            if mods_json.exists():
+                mods_json.unlink()
+            # Limpa o estado da tela
+            estado["mods"] = []
+            estado["ativo"] = None
+
+        y += BTN_ALT + 8
+
+        if desenhar_botao("Configurações", MARGEM, y, ITEM_LARG, BTN_ALT, BTN_CONFIG):
+            from gui.config import tela_config
+            from src import recarregar_paths
+
+            tela_config()
+
+            # Relê paths diretamente do disco, sem cache
+            paths = recarregar_paths()
+            mods_path_atual = Path(paths["mods"])
+            estado["mods"] = carregar_labels(listar_mods(mods_path_atual))[:5]
+            estado["ativo"] = None
+
+        y += BTN_ALT + 8
+
+        if desenhar_botao("Sair", MARGEM, y, ITEM_LARG, BTN_ALT, BTN_SAIR):
+            break
+
+        rl.end_drawing()
+
+    rl.close_window()
+
+
+if __name__ == "__main__":
+    main()

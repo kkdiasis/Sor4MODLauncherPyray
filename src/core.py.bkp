@@ -1,0 +1,196 @@
+from pathlib import Path
+import shutil
+import re
+import json
+
+# =============================================================================
+# CONFIGURAÇÃO INICIAL
+# =============================================================================
+
+config_path = Path(__file__).parent.parent / "cfg"
+paths_json  = config_path / "paths.json"
+mods_json   = config_path / "mods.json"
+
+TAMANHO_MAXIMO_MOD = 100 * 1024 * 1024  # 100MB
+PADRAO_NOME_ARQUIVO = r'^[a-zA-Z0-9_.-]+$'
+
+# Cria paths.json com valores padrão caso não exista
+if not paths_json.exists():
+    raiz = Path(__file__).parent.parent
+    paths_padrao = {
+        "game": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Streets of Rage 4\\data",
+        "mods": str(raiz / "mods")
+    }
+    with open(paths_json, 'w', encoding='utf-8') as j:
+        json.dump(paths_padrao, j, indent=4, ensure_ascii=False)
+
+with open(paths_json, 'r', encoding='utf-8') as j:
+    cfg_game_paths = json.load(j)
+
+game_path    = Path(cfg_game_paths['game'])
+mods_path    = Path(cfg_game_paths['mods'])
+bigfile      = game_path / "bigfile"
+bigfile_bkp  = game_path / "bigfile_bkp"
+bigfile_original = Path(f"{bigfile}_original")
+
+def recarregar_paths() -> dict:
+    """Relê o paths.json em tempo de execução, sem cache."""
+    with open(paths_json, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+# =============================================================================
+# VALIDAÇÃO
+# =============================================================================
+
+def validar_arquivo(arquivo) -> bool:
+    """Verifica se o arquivo existe, tem nome válido e tamanho aceitável."""
+    path = Path(arquivo)
+
+    if not path.exists() or not path.is_file():
+        return False
+
+    if not re.match(PADRAO_NOME_ARQUIVO, path.name):
+        return False
+
+    tamanho = path.stat().st_size
+
+    if tamanho == 0:
+        return False
+
+    if tamanho > TAMANHO_MAXIMO_MOD:
+        return False
+
+    return True
+
+
+# =============================================================================
+# GERENCIAMENTO DO AMBIENTE
+# =============================================================================
+
+
+
+def preparar_ambiente(bigf: Path, bigf_bkp: Path) -> None:
+    """
+    Prepara a estrutura de arquivos para uso com mods.
+
+    - Primeira execução: faz backup e converte bigfile em symlink.
+    - Execuções seguintes: verifica se a estrutura já está correta.
+    """
+    bigf_original = Path(f"{bigf}_original")
+
+    if bigf.exists() and bigf.is_file():
+        print("Arquivo encontrado. Primeira execução — criando backup...")
+        try:
+            shutil.copy2(bigf, bigf_bkp)
+            shutil.move(bigf, bigf_original)
+            bigf.symlink_to(bigf_original)
+            print("Ambiente preparado com sucesso.")
+        except Exception as e:
+            print(f"Erro ao preparar ambiente: {e}")
+
+    elif bigf.is_symlink() and bigf_bkp.is_file() and bigf_original.is_file():
+        print("Ambiente já configurado.")
+
+    else:
+        print('Erro: "bigfile" não encontrado ou corrompido. Verifique o caminho do game.')
+
+
+def restauracao_completa(bigf: Path, bigf_bkp: Path) -> None:
+    """Remove symlink e arquivos de mod, restaurando o bigfile original do backup."""
+    if bigf_bkp.exists() and bigf_bkp.is_file():
+        bigf.unlink(missing_ok=True)
+        Path(f"{bigf}_original").unlink(missing_ok=True)
+        shutil.copy2(bigf_bkp, bigf)
+        print("Restauração concluída.")
+    else:
+        print("Erro: arquivo de backup não encontrado.")
+
+
+# =============================================================================
+# GERENCIAMENTO DE MODS
+# =============================================================================
+
+def listar_mods(path: Path) -> list:
+    """Retorna uma lista de dicionários com nome e caminho dos mods disponíveis."""
+    if not path.exists() or not path.is_dir():
+        return []  # <- proteção contra pasta inexistente
+
+    return [
+        {
+            "nome":    arquivo.name,
+            "caminho": str(arquivo),
+        }
+        for arquivo in path.iterdir()
+        if arquivo.is_file()
+    ]
+
+
+def salvar_mods(caminho_cfg: Path, lista_mods: list) -> None:
+    """Salva a lista de mods no arquivo de configuração JSON."""
+    with open(caminho_cfg, 'w', encoding='utf-8') as arq:
+        json.dump(lista_mods, arq, indent=4, ensure_ascii=False)
+    print(f"Configuração de mods salva em: {caminho_cfg}")
+
+
+def iniciar_mod(bigf: Path, caminho_mod: str) -> None:
+    """Aponta o symlink do bigfile para o mod escolhido."""
+    if not validar_arquivo(caminho_mod):
+        print("Erro: arquivo de mod inválido.")
+        return
+
+    if not bigf.is_symlink():
+        print("Erro: estrutura de arquivos danificada.")
+        return
+
+    bigf.unlink(missing_ok=True)
+    bigf.symlink_to(caminho_mod)
+    print(f"Mod ativado: {caminho_mod}")
+
+
+# =============================================================================
+# UTILITÁRIOS
+# =============================================================================
+
+def is_symlink(bigf: Path) -> bool:
+    """Retorna True se o bigfile for um symlink."""
+    return bigf.is_symlink()
+
+
+# =============================================================================
+# TESTES
+# =============================================================================
+
+def teste_completo():
+    from time import sleep
+
+    print("=== Iniciando testes ===\n")
+
+    print("[1] Primeira execução:")
+    preparar_ambiente(bigfile, bigfile_bkp)
+    sleep(2)
+
+    print("\n[2] Segunda execução em diante:")
+    preparar_ambiente(bigfile, bigfile_bkp)
+    sleep(2)
+
+    print("\n[3] Restauração ao estado original:")
+    restauracao_completa(bigfile, bigfile_bkp)
+    sleep(2)
+
+    print("\n[4] Preparando ambiente novamente:")
+    preparar_ambiente(bigfile, bigfile_bkp)
+
+    print("\n[5] Listando mods:")
+    mods = listar_mods(mods_path)
+    print(mods)
+    salvar_mods(mods_json, mods)
+    sleep(2)
+
+    print("\n[6] Testando symlinks para cada mod:")
+    for mod in mods:
+        iniciar_mod(bigfile, mod['caminho'])
+        sleep(1)
+
+
+if __name__ == "__main__":
+    teste_completo()

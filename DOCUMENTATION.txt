@@ -1,0 +1,239 @@
+================================================================================
+  SOR4 MOD LAUNCHER — DOCUMENTATION
+================================================================================
+
+OVERVIEW
+--------
+SOR4 Mod Launcher is a desktop GUI application built with Python and raylib
+(pyray) that manages mods for Streets of Rage 4 by manipulating symbolic links
+(symlinks) pointing to the game's "bigfile" — the main data file the game loads
+at startup.
+
+Instead of copying or replacing files manually, the launcher creates a symlink
+named "bigfile" that points to whichever file the user selects (original or a
+mod). Switching mods is instant and non-destructive.
+
+
+--------------------------------------------------------------------------------
+PROJECT STRUCTURE
+--------------------------------------------------------------------------------
+
+  sor4-mod-launcher/
+  ├── main.py               Entry point. Prepares environment, starts GUI.
+  ├── src/
+  │   ├── __init__.py       Exports all public symbols from core.py.
+  │   └── core.py           All file system logic (no GUI).
+  ├── gui/
+  │   ├── __init__.py       Empty. Marks folder as Python package.
+  │   ├── launcher.py       Main screen (mod list + action buttons).
+  │   └── config.py         Settings screen (paths + mod management).
+  ├── cfg/
+  │   ├── paths.json        Stores game path and mods folder path.
+  │   └── mods.json         Stores mod list with labels and active flags.
+  └── mods/                 Default folder for mod files.
+
+
+--------------------------------------------------------------------------------
+FILE RESPONSIBILITIES
+--------------------------------------------------------------------------------
+
+  main.py
+    - Calls preparar_ambiente() to set up symlink structure on first run.
+    - Calls main() from gui/launcher.py to open the window.
+    - Only orchestrates — contains no logic of its own.
+
+  src/core.py
+    - Reads and creates cfg/paths.json on import.
+    - Exposes paths: game_path, mods_path, bigfile, bigfile_bkp,
+      bigfile_original, paths_json, mods_json.
+    - preparar_ambiente()   : first-run setup (backup + symlink creation).
+    - restauracao_completa(): removes symlink, restores bigfile from backup.
+    - listar_mods()         : scans mods folder, returns list of dicts.
+    - iniciar_mod()         : redirects bigfile symlink to chosen mod.
+    - recarregar_paths()    : re-reads paths.json from disk (bypasses cache).
+    - validar_arquivo()     : validates name, existence, and size of a file.
+
+  src/__init__.py
+    - Re-exports everything from core.py so other modules can import
+      cleanly from "src" instead of "src.core".
+
+  gui/launcher.py
+    - Main application window (500x650).
+    - Renders: "Original" option, active mod list, and 3 fixed buttons.
+    - On mod/original click: calls iniciar_mod() then launches Steam.
+    - On "Settings" click: calls tela_config() then reloads mod list from disk.
+    - On "Restore original" click: calls restauracao_completa(), deletes
+      mods.json, clears the mod list on screen.
+    - carregar_labels(): reads mods.json, filters only active mods,
+      applies custom labels.
+
+  gui/config.py
+    - Settings window rendered inside the same raylib context.
+    - Reads current paths and mod list from disk on open (estado_inicial()).
+    - Allows browsing for game folder and mods folder (native Windows dialog).
+    - Lists all mods in the selected folder with:
+        - Checkbox to mark as active (max 5).
+        - Inline editable label (click to rename, Enter to confirm).
+        - Scroll support for large mod lists (mouse wheel + scrollbar).
+    - On "Save": writes paths.json and mods.json to disk.
+    - On "Back": returns control to launcher.py, which reloads state.
+
+
+--------------------------------------------------------------------------------
+INTERNAL COMMUNICATION FLOWCHART
+--------------------------------------------------------------------------------
+
+  APPLICATION START
+  │
+  └─► main.py
+        │
+        ├─► src.preparar_ambiente(bigfile, bigfile_bkp)
+        │     │
+        │     ├─ [First run]
+        │     │    bigfile  ──copy──►  bigfile_bkp      (backup)
+        │     │    bigfile  ──move──►  bigfile_original  (rename)
+        │     │    bigfile  ◄─symlink─ bigfile_original  (symlink)
+        │     │
+        │     └─ [Subsequent runs]
+        │          Verifies symlink + backup + original exist. No action.
+        │
+        └─► gui.launcher.main()
+              │
+              ├─► listar_mods(mods_path)
+              │     └─► carregar_labels()  ──reads──► cfg/mods.json
+              │               │
+              │               └─ filters mods where "ativo": true
+              │                  applies custom labels
+              │                  returns list (max 5)
+              │
+              └─► RENDER LOOP
+                    │
+                    ├─ [User clicks "Original" or a mod]
+                    │    │
+                    │    ├─► iniciar_mod(bigfile, chosen_path)
+                    │    │     bigfile symlink ──► chosen_path
+                    │    │
+                    │    └─► lancar_jogo()
+                    │          subprocess: cmd /c start steam://rungameid/985890
+                    │          rl.close_window() + SystemExit
+                    │
+                    ├─ [User clicks "Restore original"]
+                    │    │
+                    │    ├─► restauracao_completa(bigfile, bigfile_bkp)
+                    │    │     bigfile symlink  ──deleted
+                    │    │     bigfile_original ──deleted
+                    │    │     bigfile_bkp ──copy──► bigfile  (restored)
+                    │    │
+                    │    ├─► mods_json.unlink()   (deletes cfg/mods.json)
+                    │    └─► estado["mods"] = []  (clears screen list)
+                    │
+                    ├─ [User clicks "Settings"]
+                    │    │
+                    │    ├─► gui.config.tela_config()
+                    │    │     │
+                    │    │     ├─ estado_inicial()
+                    │    │     │    reads paths.json + mods.json from disk
+                    │    │     │
+                    │    │     ├─ [User browses game folder]
+                    │    │     │    tkinter.filedialog → updates estado["game_path"]
+                    │    │     │
+                    │    │     ├─ [User browses mods folder]
+                    │    │     │    tkinter.filedialog → listar_mods(new_path)
+                    │    │     │    reloads mod list with ativo=False
+                    │    │     │
+                    │    │     ├─ [User toggles checkbox]
+                    │    │     │    mod["ativo"] toggled (max 5 active)
+                    │    │     │
+                    │    │     ├─ [User clicks mod label]
+                    │    │     │    inline text input activated
+                    │    │     │    Enter → saves label, Escape → cancels
+                    │    │     │
+                    │    │     ├─ [User clicks "Save"]
+                    │    │     │    writes cfg/paths.json
+                    │    │     │    writes cfg/mods.json
+                    │    │     │
+                    │    │     └─ [User clicks "Back"]
+                    │    │          returns True to launcher
+                    │    │
+                    │    ├─► recarregar_paths()   (re-reads paths.json from disk)
+                    │    ├─► listar_mods(updated_mods_path)
+                    │    └─► carregar_labels()    (reloads active mods + labels)
+                    │
+                    └─ [User clicks "Quit"]
+                         rl.close_window()
+
+
+--------------------------------------------------------------------------------
+DATA FILES
+--------------------------------------------------------------------------------
+
+  cfg/paths.json
+  --------------
+  Stores the game installation path and the mods folder path.
+
+  {
+      "game": "C:\\Program Files (x86)\\Steam\\...\\Streets of Rage 4\\data",
+      "mods": "D:\\sor4-mod-launcher\\mods"
+  }
+
+  Created automatically on first run with default values.
+  Updated by the Settings screen when the user browses for new folders.
+
+
+  cfg/mods.json
+  -------------
+  Stores the full mod list with display labels and active flags.
+
+  [
+      {
+          "nome":    "LVLS-1-2-3-4_bigfile",
+          "caminho": "D:\\sor4-mod-launcher\\mods\\LVLS-1-2-3-4_bigfile",
+          "label":   "Levels 1 to 4",
+          "ativo":   true
+      },
+      {
+          "nome":    "LVLS-12_bigfile",
+          "caminho": "D:\\sor4-mod-launcher\\mods\\LVLS-12_bigfile",
+          "label":   "Level 12",
+          "ativo":   true
+      }
+  ]
+
+  Created/updated by the Settings screen when the user clicks "Save".
+  Deleted by "Restore original" to reset the launcher to a clean state.
+  Only mods with "ativo": true appear in the main screen list (max 5).
+
+
+--------------------------------------------------------------------------------
+SYMLINK STRUCTURE (game folder)
+--------------------------------------------------------------------------------
+
+  After first run:
+
+    bigfile           → symlink → bigfile_original   (default state)
+    bigfile_original  → original game data file
+    bigfile_bkp       → copy of the original (safety backup)
+
+  After selecting a mod:
+
+    bigfile           → symlink → mods/LVLS-1-2-3-4_bigfile
+    bigfile_original  → original game data file       (untouched)
+    bigfile_bkp       → copy of the original          (untouched)
+
+  After "Restore original":
+
+    bigfile           → restored file (copy of bigfile_bkp)
+    bigfile_original  → deleted
+    bigfile_bkp       → deleted
+
+
+--------------------------------------------------------------------------------
+DEPENDENCIES
+--------------------------------------------------------------------------------
+
+  Python 3.11+
+  pyray          pip install pyray
+  tkinter        included with Python on Windows (used for folder dialog)
+
+
+================================================================================
