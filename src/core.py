@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+import sys
 import re
 import json
 
@@ -7,19 +8,31 @@ import json
 # INITIAL CONFIGURATION
 # =============================================================================
 
-config_path = Path(__file__).parent.parent / "cfg"
+def _raiz() -> Path:
+    """
+    Returns the writable root directory:
+    - Running as .exe: folder containing the .exe
+    - Running as script: project root
+    """
+    if hasattr(sys, '_MEIPASS'):
+        return Path(sys.executable).parent
+    return Path(__file__).parent.parent
+
+config_path = _raiz() / "cfg"
 paths_json  = config_path / "paths.json"
 mods_json   = config_path / "mods.json"
 
-MAX_MOD_SIZE    = 100 * 1024 * 1024       # 100MB
-VALID_FILENAME  = r'^[a-zA-Z0-9_.-]+$'
+MAX_MOD_SIZE   = 100 * 1024 * 1024  # 100MB
+VALID_FILENAME = r'^[a-zA-Z0-9_.-]+$'
+
+# Creates cfg/ folder if it doesn't exist
+config_path.mkdir(parents=True, exist_ok=True)
 
 # Creates paths.json with default values if it doesn't exist
 if not paths_json.exists():
-    raiz = Path(__file__).parent.parent
     default_paths = {
         "game": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Streets of Rage 4\\data",
-        "mods": str(raiz / "mods")
+        "mods": str(_raiz() / "mods")
     }
     with open(paths_json, 'w', encoding='utf-8') as j:
         json.dump(default_paths, j, indent=4, ensure_ascii=False)

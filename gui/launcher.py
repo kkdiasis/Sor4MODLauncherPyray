@@ -2,6 +2,7 @@ import pyray as rl
 import subprocess
 import json
 from pathlib import Path
+import sys
 from src import (
     restauracao_completa,
     listar_mods,
@@ -151,6 +152,12 @@ def desenhar_titulo() -> None:
     rl.draw_text_ex(fonte, "SOR4 MOD LAUNCHER", rl.Vector2(20, 22), 36, 1, TITULO_COR)
     rl.draw_text_ex(fonte, "select a mod and play", rl.Vector2(22, 50), 14, 1, TEXTO_FRACO)
 
+def _assets() -> Path:
+    if hasattr(sys, '_MEIPASS'):
+        return Path(sys._MEIPASS) / "assets"  # <- dentro do bundle
+    return Path(__file__).parent.parent / "assets"
+
+
 
 # =============================================================================
 # MAIN LOOP
@@ -163,7 +170,8 @@ def main() -> None:
     rl.set_target_fps(60)
     rl.set_window_state(rl.ConfigFlags.FLAG_WINDOW_UNDECORATED)
 
-    assets_path = Path(__file__).parent.parent / "assets"
+    assets_path = _assets()
+
     bg_texture  = rl.load_texture(str(assets_path / "background.png"))
     fonte       = rl.load_font_ex(str(assets_path / "BebasNeue-Regular.ttf"), 128, None, 0)
 
