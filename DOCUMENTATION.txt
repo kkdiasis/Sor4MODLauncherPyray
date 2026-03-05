@@ -232,7 +232,7 @@ DEPENDENCIES
 --------------------------------------------------------------------------------
 
   Python 3.11+
-  pyray          pip install pyray
+  raylib          pip install raylib
   tkinter        included with Python on Windows (used for folder dialog)
 
 

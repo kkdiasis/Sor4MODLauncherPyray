@@ -1,6 +1,6 @@
 """
 build.py — SOR4 Mod Launcher build script
-Run with: python build.py
+Run in terminal with: python build.py
 """
 
 import subprocess
