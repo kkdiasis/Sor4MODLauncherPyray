@@ -17,6 +17,7 @@ from src.core import (
     # Mods
     listar_mods,
     iniciar_mod,
+    sanitizar_nomes_mods,
 
     # Validation
     validar_arquivo,

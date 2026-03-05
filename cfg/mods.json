@@ -1,0 +1,38 @@
+[
+    {
+        "nome": "bigfile",
+        "caminho": "C:\\Users\\Cassio\\Downloads\\SOR4ModLauncher\\SOR4ModLauncher\\mods\\bigfile",
+        "label": "bigfile",
+        "ativo": true
+    },
+    {
+        "nome": "Pack-1-Build-3-LVLS-1-2-3_bigfile",
+        "caminho": "C:\\Users\\Cassio\\Downloads\\SOR4ModLauncher\\SOR4ModLauncher\\mods\\Pack-1-Build-3-LVLS-1-2-3_bigfile",
+        "label": "Pack-1-Build-3-LVLS-1-2-3_bigfile",
+        "ativo": true
+    },
+    {
+        "nome": "Pack-2.-Build-3-LVLS-4-5_bigfile",
+        "caminho": "C:\\Users\\Cassio\\Downloads\\SOR4ModLauncher\\SOR4ModLauncher\\mods\\Pack-2.-Build-3-LVLS-4-5_bigfile",
+        "label": "Pack-2.-Build-3-LVLS-4-5_bigfile",
+        "ativo": true
+    },
+    {
+        "nome": "Pack-3.-Build-3-LVLS-6-7-8-9_bigfile",
+        "caminho": "C:\\Users\\Cassio\\Downloads\\SOR4ModLauncher\\SOR4ModLauncher\\mods\\Pack-3.-Build-3-LVLS-6-7-8-9_bigfile",
+        "label": "Pack-3.-Build-3-LVLS-6-7-8-9_bigfile",
+        "ativo": false
+    },
+    {
+        "nome": "Pack-4.-Build-3-LVLS-10-11_bigfile",
+        "caminho": "C:\\Users\\Cassio\\Downloads\\SOR4ModLauncher\\SOR4ModLauncher\\mods\\Pack-4.-Build-3-LVLS-10-11_bigfile",
+        "label": "Pack-4.-Build-3-LVLS-10-11_bigfile",
+        "ativo": false
+    },
+    {
+        "nome": "Pack-5.-Build-3-LVLS-12_bigfile",
+        "caminho": "C:\\Users\\Cassio\\Downloads\\SOR4ModLauncher\\SOR4ModLauncher\\mods\\Pack-5.-Build-3-LVLS-12_bigfile",
+        "label": "Pack-5.-Build-3-LVLS-12_bigfile",
+        "ativo": false
+    }
+]

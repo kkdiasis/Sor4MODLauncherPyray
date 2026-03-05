@@ -7,6 +7,7 @@ from src import (
     mods_json,
     paths_json,
     listar_mods,
+    sanitizar_nomes_mods
 )
 
 # =============================================================================
@@ -56,6 +57,7 @@ def estado_inicial() -> dict:
             dados = json.load(f)
             mods_salvos = {str(Path(item["caminho"])): item for item in dados}
 
+    sanitizar_nomes_mods(Path(paths.get("mods", "")))
     mods_na_pasta = listar_mods(Path(paths.get("mods", "")))
     mods = []
     for mod in mods_na_pasta:
@@ -289,6 +291,7 @@ def tela_config() -> bool:
             if pasta:
                 estado["mods_path"]     = pasta
                 estado["scroll_offset"] = 0
+                sanitizar_nomes_mods(Path(pasta))
                 novos = listar_mods(Path(pasta))
                 estado["mods"] = [
                     {"nome": m["nome"], "caminho": m["caminho"],

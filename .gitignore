@@ -1,3 +1,5 @@
-.bkp
+*.bkp
 .venv
 .idea
+build
+dist

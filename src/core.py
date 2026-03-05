@@ -137,6 +137,36 @@ def listar_mods(path: Path) -> list:
         if arquivo.is_file()
     ]
 
+def sanitizar_nomes_mods(path: Path) -> None:
+    """
+    Renames mod files in the folder to ensure valid filenames:
+    - Replaces spaces with hyphens
+    - Removes parentheses
+    """
+    if not path.exists() or not path.is_dir():
+        return
+
+    for arquivo in path.iterdir():
+        if not arquivo.is_file():
+            continue
+
+        nome_original = arquivo.name
+        nome_novo = nome_original
+
+        # Replace spaces with hyphens
+        nome_novo = nome_novo.replace(" ", "-")
+
+        # Remove parentheses
+        nome_novo = nome_novo.replace("(", "").replace(")", "")
+
+        # Remove double hyphens that may result from the replacements
+        while "--" in nome_novo:
+            nome_novo = nome_novo.replace("--", "-")
+
+        if nome_novo != nome_original:
+            arquivo.rename(path / nome_novo)
+            print(f"Renamed: '{nome_original}' → '{nome_novo}'")
+
 
 def iniciar_mod(bigf: Path, caminho_mod: str) -> None:
     """Points the bigfile symlink to the chosen mod."""
